@@ -14,6 +14,69 @@ All setups are **tight** (allowlists, interface pinning, conntrack) and **idempo
 
 > ⚠️ SMB/445 is high risk to expose publicly. Use strict allowlists, consider VPN/SSH tunnels when possible.
 
+---
+
+## Best use cases
+
+`smb-portbridge` is designed for scenarios where:
+
+- **Transparent SMB access is required**  
+  Clients expect to connect directly to TCP/445 without being reconfigured (e.g., legacy systems, embedded devices, or large networks where client reconfiguration isn’t feasible).
+
+- **ISP or upstream network blocks outbound 445**  
+  Many ISPs block SMB for security reasons. This tool allows routing SMB traffic through alternate ports.
+
+- **Control is at the network level**  
+  You want to solve the problem with two Linux servers acting as a bridge/proxy, not by touching client configurations.
+
+- **Quick workaround for testing, migration, or special cases**  
+  Useful for short-term projects, labs, or controlled internal use where deploying a full VPN might be overkill.
+
+---
+
+## Current limitations & considerations
+
+- **Security risks of SMB exposure**  
+  SMB is a high-value attack target. Even with allowlists, exposing it on the internet is dangerous.  
+  → Always use strict source IP restrictions, rate limiting, and monitoring.
+
+- **No encryption of SMB traffic**  
+  Packets between Server A and Server B are plain TCP (except for NAT). If your network is untrusted, add a secure tunnel (VPN, SSH, stunnel) between A and B.
+
+- **Client IP is not preserved**  
+  Because of MASQUERADE, the target only sees Server B’s IP, not the original client’s IP. This simplifies routing but loses end-to-end visibility.  
+  Future enhancement could add TPROXY or a userland proxy to preserve client IPs.
+
+- **Maintenance with UFW**  
+  UFW-based installs work by editing `before.rules`. Distro updates or manual UFW resets can overwrite these rules. After updates, re-run the installer if rules are lost.
+
+- **Single protocol focus**  
+  Currently designed only for TCP/445 (SMB). Extending to other ports is possible but not included yet.
+
+- **No automatic health checks**  
+  If Server B or the target goes down, Server A just drops traffic. A future feature could include watchdogs or failover.
+
+---
+
+## Future development ideas
+
+- **WireGuard or SSH tunnel mode**  
+  Option to run the A–B hop over an encrypted tunnel automatically.
+
+- **Client IP preservation**  
+  Replace MASQUERADE with a proxy method that passes through real client addresses.
+
+- **Multi-port support**  
+  Extend configuration for other protocols commonly blocked by ISPs.
+
+- **Improved UFW integration**  
+  Safer UFW rule injection with diff/merge logic rather than direct `awk` edits.
+
+- **System health integration**  
+  Add systemd watchdog or monitoring scripts to alert if forwarding breaks.
+
+---
+
 ## Quick start
 
 On **each server**:
@@ -34,6 +97,8 @@ sudo /usr/local/sbin/smb-portbridge-cleanup
 sudo systemctl disable --now smb-portbridge.service
 ```
 
+---
+
 ## Files
 
 - `install.sh` – interactive installer (both servers, iptables/UFW)
@@ -41,6 +106,8 @@ sudo systemctl disable --now smb-portbridge.service
 - `server-a-ufw.sh`, `server-b-ufw.sh` – UFW setup (edits `before.rules`, uses `ufw route allow`)
 - `cleanup-iptables.sh`, `cleanup-ufw.sh` – remove rules cleanly
 - `LICENSE` – MIT
+
+---
 
 ## Parameters
 
@@ -56,11 +123,15 @@ sudo systemctl disable --now smb-portbridge.service
   - `PUB_IF`, `EGRESS_IF` – inbound/outbound interfaces on B
   - `ALLOW_FROM_A_CSV` – comma-separated allowlist CIDRs (Server A IPs)
 
+---
+
 ### Persistence & conflicts
 
 - Installer enables `net.ipv4.ip_forward=1` (persisted in `/etc/sysctl.conf`).
 - If your distro defaults to `nftables`, these scripts call classic `iptables` (often `iptables-legacy`). For UFW, we edit its rules files directly.
 - If you run other firewalls, ensure they don’t override these chains.
+
+---
 
 ## Security notes
 
@@ -69,6 +140,8 @@ sudo systemctl disable --now smb-portbridge.service
 - Allow `ESTABLISHED,RELATED` only, and minimal explicit forward rules.
 - MASQUERADE on egress to keep return path symmetric.
 - Consider rate limits and logging if appropriate.
+
+---
 
 ## Troubleshooting
 
